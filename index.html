@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ACTORA OS v4 [Secure]</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <style>
+        :root {
+            --bg-grad: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.15);
+            --accent: #0A84FF;
+            --text: #ffffff;
+            --win-bg: #1e1e1e;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-grad);
+            height: 100vh; overflow: hidden;
+            color: var(--text); user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* --- UI COMPONENTS --- */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+        .btn {
+            background: var(--accent); color: white; border: none; padding: 10px 18px;
+            border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.2s;
+            display: inline-flex; align-items: center; gap: 8px;
+        }
+        .btn:active { transform: scale(0.95); }
+        .hidden { display: none !important; }
+
+        /* --- NOTIFICATION CENTER --- */
+        #notif-center {
+            position: fixed; top: -100%; left: 0; right: 0; height: 100vh;
+            background: rgba(0,0,0,0.6); z-index: 5000;
+            transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+        }
+        #notif-center.active { top: 0; }
+        
+        .notif-panel {
+            width: 90%; max-width: 400px; margin: 20px auto;
+            background: rgba(30,30,30,0.8); border-radius: 20px;
+            padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        .quick-toggles {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;
+        }
+        .toggle-btn {
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+        }
+        .t-icon {
+            width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,0.1);
+            display: flex; justify-content: center; align-items: center; font-size: 20px;
+            transition: 0.2s; cursor: pointer;
+        }
+        .t-icon.on { background: var(--accent); color: white; }
+
+        /* --- LOCK SCREEN --- */
+        #lock-screen {
+            position: fixed; inset: 0; z-index: 1000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.6);
+            transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        #lock-screen.slide-up { transform: translateY(-100%); }
+
+        .user-avatar {
+            width: 100px; height: 100px; border-radius: 50%; background: #333;
+            margin-bottom: 20px; border: 3px solid white; object-fit: cover;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3); transition: 0.3s;
+        }
+        .user-option { opacity: 0.5; transform: scale(0.9); transition: 0.3s; cursor: pointer; }
+        .user-option.selected { opacity: 1; transform: scale(1.1); }
+
+        /* Face ID UI */
+        .face-scanner-ui {
+            position: relative; width: 220px; height: 220px; margin: 20px auto;
+            border-radius: 50%; overflow: hidden; border: 3px solid rgba(255,255,255,0.1);
+        }
+        #face-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .scan-overlay {
+            position: absolute; inset: 0; border-radius: 50%;
+            border: 4px solid var(--accent);
+            opacity: 0; transition: 0.3s;
+        }
+        .scan-overlay.success { border-color: #4cd964; opacity: 1; }
+        .scan-overlay.fail { border-color: #ff3b30; opacity: 1; }
+
+        #liveness-prompt {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); padding: 5px 15px; border-radius: 20px;
+            font-weight: bold; font-size: 14px; white-space: nowrap;
+        }
+
+        /* --- DESKTOP --- */
+        #desktop { position: absolute; inset: 0; display: flex; flex-direction: column; }
+        #top-bar {
+            height: 30px; display: flex; align-items: center; justify-content: space-between;
+            padding: 0 20px; font-size: 13px; font-weight: 500; z-index: 100;
+            background: rgba(0,0,0,0.2); cursor: pointer;
+        }
+        
+        #app-grid {
+            flex: 1; padding: 20px; overflow-y: auto;
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            grid-auto-rows: 110px; gap: 10px; align-content: start;
+        }
+
+        .app-item {
+            display: flex; flex-direction: column; align-items: center; cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .app-item:hover { transform: scale(1.05); }
+        .app-icon {
+            width: 64px; height: 64px; border-radius: 16px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 30px; color: white; background: #333;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); margin-bottom: 8px;
+        }
+
+        #dock {
+            height: 90px; margin: 15px; border-radius: 28px;
+            display: flex; justify-content: center; align-items: center; gap: 20px;
+            background: rgba(255,255,255,0.15); backdrop-filter: blur(25px);
+            z-index: 90; padding: 0 20px;
+        }
+
+        /* --- WINDOWS --- */
+        .window {
+            position: absolute; top: 15%; left: 15%; width: 700px; height: 500px;
+            background: var(--win-bg); border-radius: 12px;
+            display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.6);
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            resize: both; min-width: 320px; min-height: 240px;
+        }
+        .win-bar {
+            height: 40px; background: #2d2d2d; display: flex; align-items: center;
+            padding: 0 14px; justify-content: space-between; cursor: grab;
+        }
+        .win-btns { display: flex; gap: 8px; }
+        .wb { width: 12px; height: 12px; border-radius: 50%; border: none; cursor: pointer; }
+        .wb-c { background: #ff5f56; } .wb-m { background: #ffbd2e; } .wb-f { background: #27c93f; }
+        .win-content { flex: 1; background: #1a1a1a; overflow: hidden; position: relative; color: #eee; }
+
+        @keyframes popIn { from{transform:scale(0.9);opacity:0} to{transform:scale(1);opacity:1} }
+    </style>
+</head>
+<body onload="OS.boot()">
+
+    <div id="notif-center">
+        <div class="notif-panel glass">
+            <h3 style="margin-top:0">Control Center</h3>
+            <div class="quick-toggles">
+                <div class="toggle-btn" onclick="this.querySelector('.t-icon').classList.toggle('on')">
+                    <div class="t-icon on"><i class="fas fa-wifi"></i></div>
+                    <span>Wi-Fi</span>
+                </div>
+                <div class="toggle-btn" onclick="this.querySelector('.t-icon').classList.toggle('on')">
+                    <div class="t-icon on"><i class="fas fa-bluetooth"></i></div>
+                    <span>BlueTooth</span>
+                </div>
+                <div class="toggle-btn" onclick="OS.toggleTheme()">
+                    <div class="t-icon"><i class="fas fa-moon"></i></div>
+                    <span>Dark</span>
+                </div>
+                <div class="toggle-btn" onclick="location.reload()">
+                    <div class="t-icon" style="background:red"><i class="fas fa-power-off"></i></div>
+                    <span>Reboot</span>
+                </div>
+            </div>
+            
+            <div style="background:rgba(255,255,255,0.1); padding:15px; border-radius:15px; margin-bottom:15px;">
+                <div style="display:flex; gap:15px; align-items:center;">
+                    <div style="width:50px; height:50px; background:#333; border-radius:8px; display:flex; align-items:center; justify-content:center;"><i class="fas fa-music"></i></div>
+                    <div>
+                        <div style="font-weight:bold">Space Cadet</div>
+                        <div style="font-size:12px; opacity:0.7">Metro Boomin</div>
+                    </div>
+                    <i class="fas fa-play" style="margin-left:auto;"></i>
+                </div>
+            </div>
+
+            <div id="notif-list">
+                </div>
+        </div>
+        <div style="text-align:center; color:rgba(255,255,255,0.5); padding-top:20px;" onclick="Notifs.toggle()">
+            <i class="fas fa-chevron-up"></i> Close
+        </div>
+    </div>
+
+    <div id="lock-screen" class="glass">
+        <div style="font-size: 80px; font-weight: 200; margin-bottom: 5px;" id="clock-big">12:00</div>
+        <div style="font-size: 18px; margin-bottom: 50px; opacity: 0.8;" id="date-big">Monday, January 1</div>
+        
+        <div id="user-select-container" style="display:flex; gap:30px; margin-bottom:40px;">
+            </div>
+
+        <div id="auth-container" class="glass hidden" style="padding:30px; border-radius:24px; text-align:center; width:340px;">
+            </div>
+        
+        <div style="position:absolute; bottom:30px; opacity:0.5; font-size:12px;">ACTORA OS v4 (Secure)</div>
+    </div>
+
+    <div id="desktop">
+        <div id="top-bar" onclick="Notifs.toggle()">
+            <div id="top-clock">12:00 PM</div>
+            <div style="display:flex; gap:15px;">
+                <i class="fas fa-wifi"></i>
+                <i class="fas fa-battery-full"></i>
+                <div id="top-user-name">User</div>
+            </div>
+        </div>
+        <div id="app-grid"></div>
+        <div id="dock"></div>
+    </div>
+
+<script>
+/* ACTORA OS v4.0 - Secure Kernel
+   Features: 
+   - face-api.js Integration (Real AI)
+   - Liveness Check (Blink Detection)
+   - SHA-256 Hashing
+   - Multi-User Architecture
+*/
+
+const Utils = {
+    // Cryptography Helpers
+    hash: async (str) => {
+        const msgBuffer = new TextEncoder().encode(str);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    },
+    uuid: () => Math.random().toString(36).substring(2) + Date.now().toString(36),
+    delay: (ms) => new Promise(r => setTimeout(r, ms))
+};
+
+const Sys = {
+    currentUser: null,
+    users: JSON.parse(localStorage.getItem('actora_users')) || [
+        { id: 'u1', name: 'Admin', type: 'admin', pinHash: '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', faceDescriptor: null } // pin: 1234
+    ],
+    files: JSON.parse(localStorage.getItem('actora_files')) || [],
+    zIndex: 100,
+    modelsLoaded: false
+};
+
+const OS = {
+    boot: async function() {
+        Clock.init();
+        await AI.loadModels(); // Load Face API
+        Auth.renderUsers();
+        
+        // Setup initial apps if grid is empty
+        if(document.getElementById('app-grid').children.length === 0) Apps.generate();
+    },
+
+    save: () => {
+        localStorage.setItem('actora_users', JSON.stringify(Sys.users));
+        localStorage.setItem('actora_files', JSON.stringify(Sys.files));
+    },
+    
+    toggleTheme: () => {
+        document.body.style.filter = document.body.style.filter ? "" : "invert(1) hue-rotate(180deg)";
+    }
+};
+
+/* --- AI CORE (face-api.js) --- */
+const AI = {
+    loadModels: async function() {
+        console.log("Loading AI Models...");
+        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+        try {
+            await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+            await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+            await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+            Sys.modelsLoaded = true;
+            console.log("AI Models Loaded");
+        } catch(e) {
+            alert("Error loading AI Models. Face ID may not work. Check internet.");
+            console.error(e);
+        }
+    },
+
+    getFaceDescriptor: async (videoEl) => {
+        if(!Sys.modelsLoaded) return null;
+        const detection = await faceapi.detectSingleFace(videoEl).withFaceLandmarks().withFaceDescriptor();
+        if(!detection) return null;
+        return { descriptor: detection.descriptor, landmarks: detection.landmarks };
+    },
+
+    // Calculate Eye Aspect Ratio to detect blink
+    getEAR: (landmarks) => {
+        const getDist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        const leftEye = landmarks.getLeftEye();
+        const rightEye = landmarks.getRightEye();
+
+        // EAR formula: (||p2-p6|| + ||p3-p5||) / (2 * ||p1-p4||)
+        const calcEAR = (eye) => {
+            const v1 = getDist(eye[1], eye[5]);
+            const v2 = getDist(eye[2], eye[4]);
+            const h = getDist(eye[0], eye[3]);
+            return (v1 + v2) / (2 * h);
+        };
+        return (calcEAR(leftEye) + calcEAR(rightEye)) / 2;
+    }
+};
+
+/* --- NOTIFICATIONS --- */
+const Notifs = {
+    toggle: () => {
+        document.getElementById('notif-center').classList.toggle('active');
+    },
+    add: (title, msg) => {
+        const list = document.getElementById('notif-list');
+        const n = document.createElement('div');
+        n.style.cssText = "background:rgba(255,255,255,0.1); margin-top:10px; padding:12px; border-radius:10px; font-size:13px;";
+        n.innerHTML = `<strong>${title}</strong><br>${msg}`;
+        list.prepend(n);
+    }
+};
+
+/* --- AUTH SYSTEM --- */
+const Auth = {
+    selectedUserIndex: 0,
+    stream: null,
+
+    renderUsers: function() {
+        const container = document.getElementById('user-select-container');
+        container.innerHTML = Sys.users.map((u, i) => `
+            <div class="user-option ${i===0?'selected':''}" onclick="Auth.selectUser(${i})">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${u.name}" class="user-avatar">
+                <div style="text-align:center; font-weight:600">${u.name}</div>
+            </div>
+        `).join('') + `
+            <div class="user-option" onclick="Auth.createUser()">
+                <div class="user-avatar" style="display:flex; align-items:center; justify-content:center; background:#444;"><i class="fas fa-plus fa-2x"></i></div>
+                <div style="text-align:center;">New User</div>
+            </div>
+        `;
+        this.selectedUserIndex = 0;
+    },
+
+    selectUser: function(idx) {
+        document.querySelectorAll('.user-option').forEach(el => el.classList.remove('selected'));
+        document.querySelectorAll('.user-option')[idx].classList.add('selected');
+        this.selectedUserIndex = idx;
+        
+        // Show Login Box
+        document.getElementById('user-select-container').classList.add('hidden');
+        document.getElementById('auth-container').classList.remove('hidden');
+        this.showLoginMethod(Sys.users[idx]);
+    },
+
+    showLoginMethod: function(user) {
+        const box = document.getElementById('auth-container');
+        
+        if(user.faceDescriptor && Sys.modelsLoaded) {
+            // Face ID Flow
+            box.innerHTML = `
+                <h3>Face ID Secure</h3>
+                <div class="face-scanner-ui">
+                    <video id="login-video" autoplay muted playsinline></video>
+                    <div id="scan-overlay" class="scan-overlay"></div>
+                    <div id="liveness-prompt">Looking for face...</div>
+                </div>
+                <button class="btn" style="background:#555; margin-top:10px;" onclick="Auth.showPinInput()">Use PIN</button>
+                <button class="btn" style="background:transparent; border:1px solid #555; margin-top:5px;" onclick="location.reload()">Back</button>
+            `;
+            this.startFaceAuth(user);
+        } else {
+            this.showPinInput();
+        }
+    },
+
+    showPinInput: function() {
+        if(this.stream) this.stream.getTracks().forEach(t => t.stop());
+        const box = document.getElementById('auth-container');
+        box.innerHTML = `
+            <h3>Enter PIN</h3>
+            <input type="password" id="pin-input" style="background:rgba(255,255,255,0.1); border:none; padding:10px; color:white; font-size:24px; width:150px; text-align:center; border-radius:8px; margin:20px 0; outline:none;" autofocus>
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;">
+                ${[1,2,3,4,5,6,7,8,9,0].map(n => `<button class="btn" style="justify-content:center; font-size:18px; background:rgba(255,255,255,0.15);" onclick="document.getElementById('pin-input').value += '${n}'">${n}</button>`).join('')}
+                <button class="btn" style="background:var(--accent); grid-column:span 2;" onclick="Auth.verifyPin()">Unlock</button>
+            </div>
+            <div style="margin-top:10px; font-size:12px; opacity:0.6; cursor:pointer;" onclick="location.reload()">Back to Users</div>
+        `;
+    },
+
+    verifyPin: async function() {
+        const input = document.getElementById('pin-input').value;
+        const hashed = await Utils.hash(input);
+        const user = Sys.users[this.selectedUserIndex];
+        
+        if(hashed === user.pinHash) {
+            this.unlock(user);
+        } else {
+            alert("Incorrect PIN");
+            document.getElementById('pin-input').value = '';
+        }
+    },
+
+    startFaceAuth: async function(user) {
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+            const vid = document.getElementById('login-video');
+            vid.srcObject = this.stream;
+
+            const prompt = document.getElementById('liveness-prompt');
+            const overlay = document.getElementById('scan-overlay');
+            
+            // Liveness Challenge
+            const challenge = Math.random() > 0.5 ? 'blink' : 'smile'; // Simplified to Blink for now
+            let state = 'searching'; // searching -> challenge -> verifying
+            let frameCount = 0;
+
+            const loop = async () => {
+                if(!vid.srcObject) return; // stopped
+                
+                const data = await AI.getFaceDescriptor(vid);
+                
+                if(data) {
+                    if(state === 'searching') {
+                        state = 'challenge';
+                        prompt.innerText = "Please BLINK now";
+                        prompt.style.color = "#0A84FF";
+                    } 
+                    else if (state === 'challenge') {
+                        const ear = AI.getEAR(data.landmarks);
+                        // EAR < 0.25 usually means eyes closed
+                        if(ear < 0.25) { 
+                            state = 'verifying';
+                            prompt.innerText = "Analyzing Biometrics...";
+                            prompt.style.color = "#fff";
+                        }
+                    }
+                    else if (state === 'verifying') {
+                        // Compare Descriptors
+                        if(!user.faceDescriptor) return;
+                        const storedDesc = new Float32Array(Object.values(user.faceDescriptor));
+                        const dist = faceapi.euclideanDistance(data.descriptor, storedDesc);
+                        
+                        // Distance Threshold (0.6 is standard for face-api)
+                        if(dist < 0.55) {
+                            overlay.classList.add('success');
+                            prompt.innerText = "Identity Confirmed";
+                            prompt.style.color = "#4cd964";
+                            this.stream.getTracks().forEach(t=>t.stop());
+                            setTimeout(() => this.unlock(user), 800);
+                            return; 
+                        } else {
+                            frameCount++;
+                            if(frameCount > 20) {
+                                prompt.innerText = "No Match Found";
+                                prompt.style.color = "red";
+                            }
+                        }
+                    }
+                }
+                requestAnimationFrame(loop);
+            };
+            
+            vid.onloadedmetadata = () => loop();
+
+        } catch(e) {
+            console.error(e);
+            alert("Camera failed.");
+            this.showPinInput();
+        }
+    },
+
+    unlock: function(user) {
+        Sys.currentUser = user;
+        document.getElementById('top-user-name').innerText = user.name;
+        document.getElementById('lock-screen').classList.add('slide-up');
+        Notifs.add("Welcome", `Logged in as ${user.name}`);
+    },
+
+    createUser: async function() {
+        const name = prompt("Enter Username:");
+        const pin = prompt("Create 4-digit PIN:");
+        if(name && pin && pin.length >= 4) {
+            const hash = await Utils.hash(pin);
+            const newUser = { id: Utils.uuid(), name, pinHash: hash, type: 'user', faceDescriptor: null };
+            Sys.users.push(newUser);
+            OS.save();
+            this.renderUsers();
+        } else {
+            alert("Invalid Input");
+        }
+    }
+};
+
+/* --- APP MANAGER --- */
+const Apps = {
+    list: [],
+    generate: function() {
+        const grid = document.getElementById('app-grid');
+        const dock = document.getElementById('dock');
+        grid.innerHTML = ''; dock.innerHTML = '';
+
+        const defApps = [
+            { name: "Settings", icon: "fa-cog", color: "#8e8e93", type: "sys" },
+            { name: "Files", icon: "fa-folder", color: "#007AFF", type: "sys" },
+            { name: "Camera", icon: "fa-camera", color: "#333", type: "sys" },
+            { name: "Term", icon: "fa-terminal", color: "#000", type: "sys" },
+            { name: "Browser", icon: "fa-globe", color: "#0A84FF", type: "web", url: "https://www.bing.com" }
+        ];
+        
+        // Generate filler apps
+        for(let i=0; i<15; i++) {
+            defApps.push({ name: `App ${i}`, icon: "fa-cube", color: `hsl(${i*20}, 60%, 50%)`, type: 'dummy' });
+        }
+
+        this.list = defApps;
+
+        defApps.forEach((app, i) => {
+            const el = document.createElement('div');
+            el.className = 'app-item';
+            el.innerHTML = `<div class="app-icon" style="background:${app.color}"><i class="fas ${app.icon}"></i></div><span style="font-size:11px; text-shadow:0 1px 3px black;">${app.name}</span>`;
+            el.onclick = () => Windows.open(app);
+            grid.appendChild(el);
+            
+            if(i<5) {
+                const d = el.cloneNode(true);
+                d.onclick = () => Windows.open(app);
+                d.querySelector('span').remove();
+                d.querySelector('.app-icon').style.marginBottom = '0';
+                dock.appendChild(d);
+            }
+        });
+    }
+};
+
+/* --- WINDOWS & SYSTEM APPS --- */
+const Windows = {
+    open: function(app) {
+        const id = 'win-'+Date.now();
+        const w = document.createElement('div');
+        w.className = 'window glass';
+        w.style.zIndex = ++Sys.zIndex;
+        w.style.top = (100 + (Sys.zIndex%5)*30) + 'px';
+        w.style.left = (100 + (Sys.zIndex%5)*30) + 'px';
+        
+        let content = '';
+        if(app.name === 'Settings') content = this.renderSettings();
+        else if(app.name === 'Files') content = this.renderFiles();
+        else if(app.name === 'Camera') content = '<video autoplay style="width:100%;height:100%;object-fit:cover;"></video>';
+        else if(app.type === 'web') content = `<iframe src="${app.url}" style="width:100%;height:100%;border:0;background:white;"></iframe>`;
+        else content = `<div style="padding:20px;text-align:center;color:#aaa;"><h3>${app.name}</h3><p>Application Placeholder</p></div>`;
+
+        w.innerHTML = `
+            <div class="win-bar" onmousedown="Windows.drag(event, this.parentElement)">
+                <div class="win-btns">
+                    <button class="wb wb-c" onclick="this.closest('.window').remove()"></button>
+                    <button class="wb wb-m"></button>
+                    <button class="wb wb-f" onclick="this.closest('.window').classList.toggle('max')"></button>
+                </div>
+                <span>${app.name}</span>
+                <div style="width:40px"></div>
+            </div>
+            <div class="win-content">${content}</div>
+        `;
+        document.body.appendChild(w);
+
+        if(app.name === 'Camera') {
+            navigator.mediaDevices.getUserMedia({video:true}).then(s => w.querySelector('video').srcObject = s);
+        }
+    },
+
+    drag: function(e, win) {
+        let x = e.clientX - win.offsetLeft, y = e.clientY - win.offsetTop;
+        const mv = (ev) => { win.style.left=(ev.clientX-x)+'px'; win.style.top=(ev.clientY-y)+'px'; };
+        const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); };
+        document.addEventListener('mousemove', mv); document.addEventListener('mouseup', up);
+    },
+
+    renderSettings: function() {
+        const u = Sys.currentUser;
+        const hasFace = !!u.faceDescriptor;
+        return `
+            <div style="padding:25px;">
+                <h2>Settings</h2>
+                <div style="background:#2d2d2d; border-radius:10px; padding:15px; margin-bottom:20px;">
+                    <div style="display:flex; align-items:center; gap:15px;">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${u.name}" style="width:50px; border-radius:50%; background:white;">
+                        <div>
+                            <div style="font-weight:bold; font-size:18px;">${u.name}</div>
+                            <div style="opacity:0.6; font-size:12px;">ID: ${u.id.substring(0,8)}...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Security</h3>
+                <div style="margin-bottom:15px;">
+                    <button class="btn" style="width:100%; justify-content:center;" onclick="Windows.setupFaceID()">
+                        <i class="fas fa-user-lock"></i> ${hasFace ? 'Re-Scan Face ID' : 'Setup Face ID'}
+                    </button>
+                    <p style="font-size:12px; opacity:0.6; margin-top:5px;">
+                        ${hasFace ? 'Face ID is active.' : 'No face registered yet.'}
+                    </p>
+                </div>
+                
+                <button class="btn" style="background:red;" onclick="Windows.deleteUser()">Delete Profile</button>
+            </div>
+        `;
+    },
+
+    renderFiles: function() {
+        return `
+            <div style="padding:15px;">
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, 90px); gap:10px;">
+                    ${Sys.files.map(f => `
+                        <div style="text-align:center; padding:10px; border-radius:8px; background:rgba(255,255,255,0.05);">
+                            <i class="fas fa-file" style="font-size:30px; color:#0A84FF; margin-bottom:5px;"></i>
+                            <div style="font-size:11px; overflow:hidden; text-overflow:ellipsis;">${f.name}</div>
+                        </div>
+                    `).join('')}
+                    <div onclick="Windows.createFile()" style="text-align:center; padding:10px; border:2px dashed #444; border-radius:8px; cursor:pointer;">
+                        <i class="fas fa-plus" style="font-size:20px; color:#aaa; margin-bottom:5px;"></i>
+                        <div style="font-size:11px;">New File</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    createFile: function() {
+        const n = prompt("File Name:");
+        if(n) { Sys.files.push({name:n, content:""}); OS.save(); document.querySelector('.window:last-child').remove(); Windows.open({name:'Files', type:'sys'}); }
+    },
+
+    deleteUser: function() {
+        if(confirm("Delete this user profile?")) {
+            Sys.users = Sys.users.filter(u => u.id !== Sys.currentUser.id);
+            if(Sys.users.length === 0) Sys.users = [{id:'root', name:'Admin', pinHash: Sys.currentUser.pinHash, type:'admin'}]; // Prevent lockout
+            OS.save();
+            location.reload();
+        }
+    },
+
+    setupFaceID: async function() {
+        if(!Sys.modelsLoaded) return alert("AI Models not loaded yet. Wait a moment.");
+        
+        const w = document.createElement('div');
+        w.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:9000; display:flex; flex-direction:column; align-items:center; justify-content:center;";
+        w.innerHTML = `
+            <h2 style="color:white;">Center Face</h2>
+            <div style="width:300px; height:300px; border:2px solid #0A84FF; border-radius:50%; overflow:hidden; position:relative;">
+                <video id="setup-vid" autoplay muted playsinline style="width:100%; height:100%; object-fit:cover; transform:scaleX(-1)"></video>
+            </div>
+            <div id="setup-status" style="margin-top:20px; color:white; font-size:18px;">Initializing Camera...</div>
+            <button class="btn" style="margin-top:30px; background:red;" onclick="this.parentElement.remove()">Cancel</button>
+        `;
+        document.body.appendChild(w);
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
+            const vid = document.getElementById('setup-vid');
+            vid.srcObject = stream;
+
+            let scans = 0;
+            const status = document.getElementById('setup-status');
+            
+            // Collect 5 good frames to average (simplified to 1 high quality here for demo speed)
+            const scanLoop = setInterval(async () => {
+                const det = await AI.getFaceDescriptor(vid);
+                if(det) {
+                    status.innerText = "Hold still... Scanning...";
+                    status.style.color = "#0f0";
+                    
+                    // Save Descriptor
+                    Sys.currentUser.faceDescriptor = det.descriptor;
+                    
+                    // Update user in array
+                    const idx = Sys.users.findIndex(u => u.id === Sys.currentUser.id);
+                    Sys.users[idx] = Sys.currentUser;
+                    OS.save();
+
+                    clearInterval(scanLoop);
+                    status.innerText = "Success! Face ID Registered.";
+                    setTimeout(() => {
+                        stream.getTracks().forEach(t => t.stop());
+                        w.remove();
+                    }, 1500);
+                } else {
+                    status.innerText = "Face not detected...";
+                    status.style.color = "orange";
+                }
+            }, 500);
+
+        } catch(e) {
+            alert("Camera error");
+            w.remove();
+        }
+    }
+};
+
+const Clock = {
+    init: () => {
+        const update = () => {
+            const d = new Date();
+            const t = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            if(document.getElementById('clock-big')) document.getElementById('clock-big').innerText = t;
+            if(document.getElementById('top-clock')) document.getElementById('top-clock').innerText = t;
+        };
+        setInterval(update, 1000); update();
+    }
+};
+</script>
+</body>
+</html>
